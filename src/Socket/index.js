@@ -133,10 +133,15 @@ class Socket {
    *
    * @param  {String}   event
    * @param  {Mixed}    data
+   * @param  {Array}    exceptIds
    *
    * @return {void}
    */
-  broadcast (event, data) {
+  broadcast (event, data, exceptIds = [this.id]) {
+    if (!Array.isArray(exceptIds)) {
+      throw GE.InvalidArgumentException.invalidParameter('broadcast expects 3rd parameter to be an array of socket ids', exceptIds)
+    }
+
     const packet = this.connection.makeEventPacket(this.topic, event, data)
 
     /**
@@ -147,8 +152,8 @@ class Socket {
       if (error) {
         return
       }
-      this.channel.broadcastPayload(this.topic, payload, [this.id])
-      ClusterHop.send('broadcast', this.topic, payload)
+      this.channel.broadcastPayload(this.topic, payload, exceptIds)
+      ClusterHop.send('broadcast', this.topic, payload, { ids: exceptIds })
     })
   }
 
@@ -206,7 +211,7 @@ class Socket {
         return
       }
       this.channel.broadcastPayload(this.topic, payload, ids, true)
-      ClusterHop.send('broadcast', this.topic, payload)
+      ClusterHop.send('broadcast', this.topic, payload, { ids, inverse: true })
     })
   }
 
