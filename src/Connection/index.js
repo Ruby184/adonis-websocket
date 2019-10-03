@@ -12,7 +12,7 @@
 const cuid = require('cuid')
 const Emittery = require('emittery')
 const debug = require('debug')('adonis:websocket')
-const msp = require('@adonisjs/websocket-packet')
+const msp = require('@uxtweak/adonis-websocket-packet')
 
 const Context = require('../Context')
 const Socket = require('../Socket')
@@ -33,9 +33,10 @@ const ChannelsManager = require('../Channel/Manager')
  * @param {Object} encoder  Encoder to be used for encoding/decoding messages
  */
 class Connection extends Emittery {
-  constructor (ws, req, encoder) {
+  constructor (ws, req, encoder, Logger) {
     super()
 
+    this.Logger = Logger
     this.ws = ws
     this.req = req
 
@@ -279,7 +280,8 @@ class Connection extends Emittery {
           this.sendAckPacket(topic, id, data)
         })
         .catch((error) => {
-          this.sendAckErrorPacket(topic, id, error.message)
+          this.sendAckErrorPacket(topic, id, error)
+          this.Logger.error('%s: %s', error.message, error.stack)
         })
     }
   }
@@ -706,12 +708,12 @@ class Connection extends Emittery {
    *
    * @param  {String}  topic
    * @param  {Number}  id
-   * @param  {String}  message
+   * @param  {Error}  error
    *
    * @return {void}
    */
-  sendAckErrorPacket (topic, id, message) {
-    this.sendPacket(msp.ackErrorPacket(topic, id, message))
+  sendAckErrorPacket (topic, id, error) {
+    this.sendPacket(msp.ackErrorPacket(topic, id, error))
   }
 
   /**

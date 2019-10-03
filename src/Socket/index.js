@@ -268,10 +268,11 @@ class Socket {
    *
    * @return {void}
    */
-  serverAckError ({ id, message }) {
+  serverAckError ({ id, name, message, code, status, stack }) {
     if (this._acks.has(id)) {
       const ack = this._acks.get(id)
-      ack(new Error(message))
+      const error = new Error(message)
+      ack(Object.assign(error, { name, status, code, stack }))
       this._acks.delete(id)
     } else {
       debug('bad ack %s for %s topic', id, this.topic)

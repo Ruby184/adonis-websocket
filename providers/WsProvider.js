@@ -24,7 +24,7 @@ class WsProvider extends ServiceProvider {
   _registerWs () {
     this.app.singleton('Adonis/Addons/Ws', function (app) {
       const Ws = require('../src/Ws')
-      return new Ws(app.use('Adonis/Src/Config'))
+      return new Ws(app.use('Adonis/Src/Config'), app.use('Adonis/Src/Logger'))
     })
     this.app.alias('Adonis/Addons/Ws', 'Ws')
   }

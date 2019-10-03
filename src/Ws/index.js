@@ -27,7 +27,9 @@ const middleware = require('../Middleware')
  * @package {Config} Config - Reference of Config provider
  */
 class Ws {
-  constructor (Config) {
+  constructor (Config, Logger) {
+    this.Logger = Logger
+    
     this._options = Config.merge('socket', {
       path: '/adonis-ws',
       serverInterval: 30000,
@@ -204,7 +206,7 @@ class Ws {
    * @return {void}
    */
   handle (ws, req) {
-    const connection = new Connection(ws, req, this._encoder)
+    const connection = new Connection(ws, req, this._encoder, this.Logger)
 
     /**
      * Important to leave the connection instance, when it closes to
