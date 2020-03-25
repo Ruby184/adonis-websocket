@@ -241,7 +241,7 @@ class Connection extends Emittery {
      * Ping from client
      */
     if (msp.isPingPacket(packet)) {
-      this.sendPacket(msp.pongPacket())
+      this._processPing(packet)
       return
     }
 
@@ -332,6 +332,21 @@ class Connection extends Emittery {
     }
 
     this.getSubscription(packet.d.topic).serverAckError(packet.d)
+  }
+
+    /**
+   * Processes the ack error by ensuring the packet is valid and there
+   * is a subscription for the given topic.
+   *
+   * @method _processAckError
+   *
+   * @param  {Object}      packet
+   *
+   * @return {void}
+   */
+  _processPing (packet) {
+    this.sendPacket(msp.pongPacket())
+    this.emit('ping', packet.d)
   }
 
   /**
@@ -667,6 +682,7 @@ class Connection extends Emittery {
    */
   sendOpenPacket (options) {
     this.sendPacket({ t: msp.codes.OPEN, d: options })
+    this.emit('open', options)
   }
 
   /**

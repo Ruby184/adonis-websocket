@@ -58,6 +58,13 @@ class Ws {
     this._handshakeFn = null
 
     /**
+     * The function to be called on connection
+     *
+     * @type {Function}
+     */
+    this._connectionFn = null
+
+    /**
      * Reference to actual websocket server. It will
      * be set when `listen` method is called.
      *
@@ -170,6 +177,24 @@ class Ws {
   }
 
   /**
+   * Bind a single function on coinnection is created
+   *
+   * @method onHandshake
+   *
+   * @param  {Function}  fn
+   *
+   * @chainable
+   */
+  onConnection (fn) {
+    if (typeof (fn) !== 'function') {
+      throw GE.InvalidArgumentException.invalidParameter('Ws.onConnection accepts a function', fn)
+    }
+
+    this._connectionFn = fn
+    return this
+  }
+
+  /**
    * Register a new channel to accept topic subscriptions
    *
    * @method channel
@@ -205,7 +230,7 @@ class Ws {
    *
    * @return {void}
    */
-  handle (ws, req) {
+  async handle (ws, req) {
     const connection = new Connection(ws, req, this._encoder, this.Logger)
 
     /**
@@ -216,17 +241,23 @@ class Ws {
       this._connections.delete(__connection__)
     })
 
-    /**
-     * Open packet is an acknowledgement to the client that server is
-     * ready to accept subscriptions
-     */
-    connection.sendOpenPacket({
+    const options = {
       connId: connection.id,
       serverInterval: this._options.serverInterval,
       serverAttempts: this._options.serverAttempts,
       clientInterval: this._options.clientInterval,
       clientAttempts: this._options.clientAttempts
-    })
+    }
+
+    if (typeof (this._connectionFn) === 'function') {
+      Object.assign(options, await this._connectionFn(connection))
+    }
+
+    /**
+     * Open packet is an acknowledgement to the client that server is
+     * ready to accept subscriptions
+     */
+    connection.sendOpenPacket(options)
 
     this._connections.add(connection)
   }
