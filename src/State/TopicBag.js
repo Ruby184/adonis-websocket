@@ -25,8 +25,12 @@ class TopicBag {
 
   put (key, value) {
     this.isDirty = this.isDirty || this.get(key) !== value
-
     return _.set(this._values, key, value)
+  }
+
+  merge (values) {
+    this.isDirty = true
+    return _.merge(this._values, values)
   }
 
   get (key, defaultValue = null) {
@@ -34,12 +38,19 @@ class TopicBag {
   }
 
   forget (key) {
-    if (!_.has(this._values, key)) {
-      return
-    }
+    return this.isDirty = _.unset(this._values, key)
+  }
 
+  pull (key, defaultValue) {
+    return ((value) => {
+      this.forget(key)
+      return value
+    })(this.get(key, defaultValue))
+  }
+
+  clear () {
     this.isDirty = true
-    _.unset(this._values, key)
+    this._values = {}
   }
 
   all () {
