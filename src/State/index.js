@@ -76,16 +76,17 @@ class RedisState {
   }
 
   async purgeExpired () {
-    const ids = await this.connection().purgeExpired(this.wsExpiredKey, this._now())
+    const result = await this.connection().purgeExpired(this.wsExpiredKey, this._now())
 
-    if (!ids) {
+    if (!Array.isArray(result)) {
       return false
     }
 
     const multi = this.connection().multi()
 
-    for (const [id, expiredAt] of Object.entries(ids)) {
-      const closedAt = new Date((expiredAt - this.expiration) * 1000)
+    for (let i = 0; i < result.length; i += 2) {
+      const id = result[i]
+      const closedAt = new Date((Number(result[i + 1]) - this.expiration) * 1000)
       const connKey = this.connectionKeyFor(id)
       const topics = await this.connection().smembers(connKey)
 

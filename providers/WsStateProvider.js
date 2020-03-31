@@ -45,20 +45,6 @@ class WsStateProvider extends ServiceProvider {
         end
       `
     })
-
-    Redis.Command.setReplyTransformer('purgeExpired', function (result) {
-      if (Array.isArray(result)) {
-        const obj = {}
-
-        for (let i = 0; i < result.length; i += 2) {
-          obj[result[i]] = Number(result[i + 1])
-        }
-
-        return obj
-      }
-
-      return result
-    })
   }
 
   /**
