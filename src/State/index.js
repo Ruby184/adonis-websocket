@@ -111,7 +111,7 @@ class RedisState {
 
     const Controller = channel._getChannelController()
 
-    if (typeof (Controller['onExpiredState'] !== 'function')) {
+    if (typeof (Controller['onExpiredState']) !== 'function') {
       return
     }
 
