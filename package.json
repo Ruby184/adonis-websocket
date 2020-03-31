@@ -1,6 +1,6 @@
 {
   "name": "@uxtweak/adonis-websocket",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "websocket server for Adonis framework",
   "main": "index.js",
   "files": [
