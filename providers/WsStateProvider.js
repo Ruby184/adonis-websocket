@@ -29,6 +29,24 @@ class WsStateProvider extends ServiceProvider {
     })
   }
 
+  _addRedisCommand (Redis) {
+    // KEYS[1] = key of expirable values
+    // ARGV[1] = current timestamp
+    Redis.defineCommand('purgeExpired', {
+      numberOfKeys: 1,
+      lua: `
+        local res = redis.call('ZRANGEBYSCORE', KEYS[1], 0, ARGV[1], 'LIMIT', 0, 10)
+
+        if #res > 0 then
+          redis.call('ZREMRANGEBYRANK', KEYS[1], 0, #res - 1)
+          return res
+        else
+          return false
+        end
+      `
+    })
+  }
+
   /**
    * Add request getter to the WsContext
    *
@@ -40,6 +58,8 @@ class WsStateProvider extends ServiceProvider {
     const Ws = this.app.use('Adonis/Addons/Ws')
     const WsState = this.app.use('Adonis/Addons/WsState')
     const WsContext = this.app.use('Adonis/Addons/WsContext')
+
+    this._addRedisCommand(WsState.connection())
 
     Ws.onConnection(WsState.handleConnection.bind(WsState))
 

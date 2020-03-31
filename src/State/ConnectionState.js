@@ -9,25 +9,24 @@ class ConnectionState {
 
   forTopic (name) {
     if (!this._topics.has(name)) {
-      this._topics.set(name, new TopicBag(this._state, this._id, name))
+      this._topics.set(name, new TopicBag(this, name))
     }
 
     return this._topics.get(name)
   }
 
-  async save () {
-    const promises = []
-    
-    for (const bag of this._topics) {
-      promises.push(bag.save())
-    }
-
-    await Promise.all(promises)
+  async getData (name) {
+    return this._state.retrieveTopic(this._id, name)
   }
 
-  // TODO:
-  async destroy () {
-    this._topics.clear()
+  async commit () {
+    const data = {}
+
+    for (const [topic, bag] of this._topics) {
+      data[topic] = bag.all()
+    }
+
+    await this._state.saveConnection(this._id, data)
   }
 }
 
