@@ -14,11 +14,15 @@ class RedisState {
   }
 
   _expiresAt () {
-    return this._now() + (this._config.expire || 1800)
+    return this._now() + this.expiration
   }
 
   connection () {
     return this._Redis.connection(this._config.connection)
+  }
+
+  get expiration () {
+    return this._config.expire || 1800
   }
 
   get wsExpiredKey () {
@@ -74,19 +78,20 @@ class RedisState {
   async purgeExpired () {
     const ids = await this.connection().purgeExpired(this.wsExpiredKey, this._now())
 
-    if (ids === false) {
+    if (!ids) {
       return false
     }
 
     const multi = this.connection().multi()
 
-    for (const id of ids) {
+    for (const [id, expiredAt] of Object.entries(ids)) {
+      const closedAt = new Date((expiredAt - this.expiration) * 1000)
       const connKey = this.connectionKeyFor(id)
       const topics = await this.connection().smembers(connKey)
 
       for (const topic of topics) {
         try {
-          await this._callExpiredOnController(id, topic)
+          await this._callExpiredOnController(id, topic, closedAt)
         } catch (err) {
           //
         }
@@ -102,7 +107,7 @@ class RedisState {
     return true
   }
 
-  async _callExpiredOnController (id, topic) {
+  async _callExpiredOnController (id, topic, closedAt) {
     const channel = ChannelManager.resolve(topic)
 
     if (!channel || typeof(channel._onConnect) !== 'string') {
@@ -117,7 +122,7 @@ class RedisState {
 
     const data = await this.retrieveTopic(id, topic)
 
-    return Controller.onExpiredState(data, topic)
+    return Controller.onExpiredState(data, closedAt, topic)
   }
 }
 

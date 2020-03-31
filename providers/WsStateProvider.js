@@ -35,15 +35,29 @@ class WsStateProvider extends ServiceProvider {
     Redis.defineCommand('purgeExpired', {
       numberOfKeys: 1,
       lua: `
-        local res = redis.call('ZRANGEBYSCORE', KEYS[1], 0, ARGV[1], 'LIMIT', 0, 10)
+        local res = redis.call('ZRANGEBYSCORE', KEYS[1], 0, ARGV[1], 'WITHSCORES', 'LIMIT', 0, 10)
 
         if #res > 0 then
-          redis.call('ZREMRANGEBYRANK', KEYS[1], 0, #res - 1)
+          redis.call('ZREMRANGEBYRANK', KEYS[1], 0, #res / 2 - 1)
           return res
         else
           return false
         end
       `
+    })
+
+    Redis.Command.setReplyTransformer('purgeExpired', function (result) {
+      if (Array.isArray(result)) {
+        const obj = {}
+
+        for (let i = 0; i < result.length; i += 2) {
+          obj[result[i]] = Number(result[i + 1])
+        }
+
+        return obj
+      }
+
+      return result
     })
   }
 
