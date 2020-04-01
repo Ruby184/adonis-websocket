@@ -23,10 +23,12 @@ const middleware = require('../Middleware')
  * @param {Function} onConnect  Function to be invoked when a socket joins a Channel
  */
 class Channel {
-  constructor (name, onConnect) {
+  constructor (clusterHop, name, onConnect) {
     this._validateArguments(name, onConnect)
+    
     this.name = name
-
+    
+    this._clusterHop = clusterHop
     this._onConnect = onConnect
 
     /**
@@ -64,9 +66,10 @@ class Channel {
      */
     this.deleteSubscription = function (subscription) {
       const topic = this.subscriptions.get(subscription.topic)
-      if (topic) {
-        debug('removing channel subscription for %s topic', subscription.topic)
-        topic.delete(subscription)
+      debug('removing channel subscription for %s topic', subscription.topic)
+
+      if (topic && topic.delete(subscription) && topic.size === 0) {
+        this.subscriptions.delete(subscription.topic)
       }
     }.bind(this)
   }
@@ -217,20 +220,6 @@ class Channel {
   }
 
   /**
-   * Returns the first subscription from all the existing subscriptions
-   *
-   * @method getFirstSubscription
-   *
-   * @param  {String}             topic
-   *
-   * @return {Socket}
-   */
-  getFirstSubscription (topic) {
-    const subscriptions = this.getTopicSubscriptions(topic)
-    return subscriptions.values().next().value
-  }
-
-  /**
    * Join a topic by saving the subscription reference. This method
    * will execute the middleware chain before saving the
    * subscription reference and invoking the onConnect
@@ -293,58 +282,7 @@ class Channel {
    * @return {Object|Null}
    */
   topic (topic) {
-    const socket = this.getFirstSubscription(topic)
-    if (!socket) {
-      return null
-    }
-
-    return {
-      socket,
-      /**
-       * Broadcast to everyone
-       *
-       * @method broadcast
-       * @alias broadcastToAll
-       *
-       * @param  {String}  event
-       * @param  {Mixed}  data
-       * @param  {Array}  exceptIds
-       *
-       * @return {void}
-       */
-      broadcast (event, data, exceptIds = []) {
-        this.socket.broadcast(event, data, exceptIds)
-      },
-
-      /**
-       * Broadcast to everyone
-       *
-       * @method broadcastToAll
-       *
-       * @param  {String}       event
-       * @param  {Mixed}       data
-       *
-       * @return {void}
-       */
-      broadcastToAll (event, data) {
-        this.socket.broadcastToAll(event, data)
-      },
-
-      /**
-       * emit to certain ids
-       *
-       * @method emitTo
-       *
-       * @param  {String}    event
-       * @param  {Mixed}     data
-       * @param  {Array}     ids
-       *
-       * @return {void}
-       */
-      emitTo (event, data, ids) {
-        this.socket.emitTo(event, data, ids)
-      }
-    }
+    return this._clusterHop.broadcastForTopic(this, topic)
   }
 
   /**
@@ -360,7 +298,7 @@ class Channel {
    * @return {void}
    */
   broadcastPayload (topic, payload, filterSockets = [], inverse = false) {
-    this.getTopicSubscriptions(topic).forEach((socket) => {
+    this.subscriptions.has(topic) && this.getTopicSubscriptions(topic).forEach((socket) => {
       const socketIndex = filterSockets.indexOf(socket.id)
       const shouldSend = inverse ? socketIndex > -1 : socketIndex === -1
 
@@ -368,21 +306,6 @@ class Channel {
         socket.connection.write(payload)
       }
     })
-  }
-
-  /**
-   * Invoked when a message is received on cluster node
-   *
-   * @method clusterBroadcast
-   *
-   * @param  {String}         topic
-   * @param  {String}         payload
-   * @param  {Object}         args
-   *
-   * @return {void}
-   */
-  clusterBroadcast (topic, payload, args = {}) {
-    this.broadcastPayload(topic, payload, args.ids, args.inverse)
   }
 }
 

@@ -94,6 +94,14 @@ class Ws {
      * @type {Timer}
      */
     this._heartBeatTimer = null
+
+    /**
+     * Instance of cluster hop with encoder to allow broadcast
+     * between cluster workers
+     *
+     * @type {ClusterHop}
+     */
+    this._clusterHop = new ClusterHop(this._encoder)
   }
 
   /**
@@ -203,8 +211,8 @@ class Ws {
    *
    * @return {Channel}
    */
-  channel (...args) {
-    return ChannelManager.add(...args)
+  channel (name, onConnect) {
+    return ChannelManager.add(this._clusterHop, name, onConnect)
   }
 
   /**
@@ -287,7 +295,7 @@ class Ws {
     this._wsServer.on('connection', this.handle.bind(this))
 
     this._registerTimer()
-    ClusterHop.init()
+    this._clusterHop.init()
   }
 
   /**
@@ -299,7 +307,7 @@ class Ws {
    */
   close () {
     ChannelManager.clear()
-    ClusterHop.destroy()
+    this._clusterHop.destroy()
 
     if (this._wsServer) {
       this._connections.forEach((connection) => connection.terminate('closing server'))

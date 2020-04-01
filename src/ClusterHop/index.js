@@ -11,52 +11,103 @@
 
 const cluster = require('cluster')
 const debug = require('debug')('adonis:websocket')
-const receiver = require('./receiver')
-const sender = require('./sender')
+const msp = require('@uxtweak/adonis-websocket-packet')
+const { serialize, deserialize } = require('./serializer')
+const ChannelsManager = require('../Channel/Manager')
 
-module.exports = {
-  /**
-   * Bind listener to listen for process message
-   *
-   * @method init
-   *
-   * @return {void}
-   */
+class ClusterHop {
+  constructor (encoder) {
+    this._encoder = encoder
+
+    this.sender = function (handle, topic, payload, args = {}) {
+      try {
+        process.send && process.send(serialize({ handle, topic, payload, args }))
+      } catch (error) {
+        debug('cluster.send error %o', error)
+      }
+    }.bind(this)
+
+    this.receiver = function (message) {
+      let decoded = null
+    
+      try {
+        decoded = deserialize(message)
+      } catch (error) {
+        return debug('dropping packet, since it is not valid')
+      }
+
+      try {
+        this._deliverMessage(decoded)
+      } catch (error) {
+        debug('unable to process cluster message with error %o', error)
+      }
+    }.bind(this)
+  }
+
   init () {
     if (cluster.isWorker) {
       debug('adding listener from worker to receive node message')
-      process.on('message', receiver)
+      process.on('message', this.receiver)
     }
-  },
+  }
 
-  /**
-   * Sends a message out from the process. The cluster should bind
-   * listener for listening messages.
-   *
-   * @method send
-   *
-   * @param  {String} handle
-   * @param  {String} topic
-   * @param  {Object} payload
-   * @param  {Object} args
-   *
-   * @return {void}
-   */
-  send (handle, topic, payload, args = {}) {
-    if (cluster.isWorker) {
-      sender(handle, topic, payload, args)
-    }
-  },
-
-  /**
-   * Clear up event listeners
-   *
-   * @method destroy
-   *
-   * @return {void}
-   */
   destroy () {
     debug('cleaning up cluster listeners')
-    process.removeListener('message', receiver)
+    process.removeListener('message', this.receiver)
+  }
+
+  _deliverMessage ({ handle, topic, payload, args = {} }) {
+    if (handle === 'broadcast') {
+      const channel = ChannelsManager.resolve(topic)
+  
+      if (!channel) {
+        return debug('broadcast topic %s cannot be handled by any channel', topic)
+      }
+  
+      return channel.broadcastPayload(topic, payload, args.ids, args.inverse)
+    }
+  
+    debug('dropping packet, since %s handle is not allowed', handle)
+  }
+
+  _broadcastEvent (channel, topic, event, data, ids = [], inverse = false) {
+    const packet = msp.eventPacket(topic, event, data)
+
+    /**
+     * Encoding the packet before hand, so that we don't pay the penalty of
+     * re-encoding the same message again and again
+     */
+    this._encoder.encode(packet, (err, payload) => {
+      if (err) {
+        return
+      }
+
+      channel.broadcastPayload(topic, payload, ids, inverse)
+      this.sender('broadcast', topic, payload, { ids, inverse })
+    })
+  }
+
+  broadcastForTopic (channel, topic) {
+    if (ChannelsManager.resolve(topic) !== channel) {
+      return null
+    }
+    
+    const $this = this
+    
+    return {
+      broadcast (event, data, exceptIds = []) {
+        $this._broadcastEvent(channel, topic, event, data, exceptIds)
+      },
+
+      broadcastToAll (event, data) {
+        $this._broadcastEvent(channel, topic, event, data)
+      },
+
+      emitTo (event, data, ids) {
+        $this._broadcastEvent(channel, topic, event, data, ids, true)
+      }
+    }
   }
 }
+
+module.exports = ClusterHop
