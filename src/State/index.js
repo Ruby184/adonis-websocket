@@ -44,6 +44,11 @@ class RedisState {
 
     connection.state = new ConnectionState(this, state)
 
+    // save on ping because close is called later after ping is not recieved
+    connection.on('ping', async () => {
+      await connection.state.commit()
+    })
+
     connection.on('close', async () => {
       await connection.state.commit()
     })
