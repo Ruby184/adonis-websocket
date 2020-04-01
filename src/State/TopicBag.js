@@ -12,6 +12,10 @@ class TopicBag {
     this._values = await this._state.getData(this._name)
   }
 
+  async persist () {
+    return this._state.saveData(this._name)
+  }
+
   put (key, value) {
     this.isDirty = this.isDirty || this.get(key) !== value
     return _.set(this._values, key, value)

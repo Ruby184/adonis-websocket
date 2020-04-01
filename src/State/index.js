@@ -61,7 +61,13 @@ class RedisState {
     const topics = Object.keys(data)
 
     topics.forEach((topic) => {
-      multi.set(this.topicKeyFor(id, topic), JSON.stringify(data[topic]))
+      const key = this.topicKeyFor(id, topic)
+      
+      if (Object.keys(data[topic]).length) {
+        multi.set(key, JSON.stringify(data[topic]))
+      } else {
+        multi.del(key)
+      }
     })
 
     multi.sadd(this.connectionKeyFor(id), topics)
@@ -78,6 +84,10 @@ class RedisState {
     }
 
     return JSON.parse(payload)
+  }
+
+  async updateTopic (id, topic, data) {
+    return this.connection().set(this.topicKeyFor(id, topic), JSON.stringify(data))
   }
 
   async purgeExpired () {

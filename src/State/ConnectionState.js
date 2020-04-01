@@ -19,6 +19,10 @@ class ConnectionState {
     return this._state.retrieveTopic(this._id, name)
   }
 
+  async saveData (name) {
+    return this._state.updateTopic(this._id, name, this._topics.get(name).all())
+  }
+
   async commit () {
     const data = {}
 
