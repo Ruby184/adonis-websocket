@@ -106,7 +106,7 @@ class Connection extends Emittery {
     this.ws.on('error', this._onError.bind(this))
     this.ws.on('close', this._onClose.bind(this))
 
-    this.Logger.debug(`WS newConnection connection: %s, ip: %d`, this.id, this.req.headers['x-forwarded-for'] || this.req.connection.remoteAddress)
+    this.Logger.debug(`WS newConnection connection: %s, ip: %s`, this.id, this.req.headers['x-forwarded-for'] || this.req.connection.remoteAddress)
   }
 
   /**
@@ -152,7 +152,9 @@ class Connection extends Emittery {
    */
   _openPacket (packet) {
     return new Promise((resolve) => {
-      this.Logger.debug(`WS openPacket connection: %s, length: %d`, this.id, packet.length)
+      if (packet.length >= 5) {
+        this.Logger.debug(`WS openPacket connection: %s, length: %d`, this.id, packet.length)
+      }
 
       this._encoder.decode(packet, (error, payload) => {
         if (error) {
