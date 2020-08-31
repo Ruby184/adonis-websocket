@@ -105,6 +105,8 @@ class Connection extends Emittery {
     this.ws.on('message', this._onMessage.bind(this))
     this.ws.on('error', this._onError.bind(this))
     this.ws.on('close', this._onClose.bind(this))
+
+    this.Logger.debug(`WS newConnection connection: %s, ip: %d`, this.id, this.req.headers['x-forwarded-for'] || this.req.connection.remoteAddress)
   }
 
   /**
@@ -134,6 +136,7 @@ class Connection extends Emittery {
    */
   _notifyPacketDropped (fn, message, ...args) {
     debug(`${fn}:${message}`, ...args)
+    this.Logger.debug(`${fn}:${message}`, ...args)
   }
 
   /**
@@ -149,6 +152,8 @@ class Connection extends Emittery {
    */
   _openPacket (packet) {
     return new Promise((resolve) => {
+      this.Logger.debug(`WS openPacket connection: %s, length: %d`, this.id, packet.length)
+
       this._encoder.decode(packet, (error, payload) => {
         if (error) {
           return resolve({})
@@ -278,10 +283,17 @@ class Connection extends Emittery {
         .then((responses) => {
           const data = responses.find((response) => typeof (response) !== 'undefined')
           this.sendAckPacket(topic, id, data)
+          this.Logger.debug(
+            'WS _processEvent connection: %s, packet: %j, response: %j',
+            this.id, packet.d, data
+          )
         })
         .catch((error) => {
           this.sendAckErrorPacket(topic, id, error)
-          this.Logger.error('%s: %s', error.message, error.stack)
+          this.Logger.error(
+            'WS _processEvent connection: %s, packet: %j, %s: %s',
+            this.id, packet.d, error.message, error.stack
+          )
         })
     }
   }
