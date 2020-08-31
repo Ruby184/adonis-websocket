@@ -194,6 +194,14 @@ class Connection extends Emittery {
           this._notifyPacketDropped('_onMessage', 'packet dropped, there is no {t} property %j', payload)
           return
         }
+
+        if (packet.length > 150) {
+          this.Logger.debug(
+            'WS _onMessage connection: %s, packet data: %j',
+            this.id, payload.d
+          )
+        }
+
         this._handleMessage(payload)
       })
   }
