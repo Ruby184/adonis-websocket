@@ -281,8 +281,8 @@ class Channel {
    *
    * @return {Object|Null}
    */
-  topic (topic) {
-    return this._clusterHop.broadcastForTopic(this, topic)
+  topic (topic, ipcBroadcast = true) {
+    return this._clusterHop.broadcastForTopic(this, topic, ipcBroadcast)
   }
 
   /**

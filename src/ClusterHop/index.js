@@ -70,7 +70,7 @@ class ClusterHop {
     debug('dropping packet, since %s handle is not allowed', handle)
   }
 
-  _broadcastEvent (channel, topic, event, data, ids = [], inverse = false) {
+  _broadcastEvent (ipcBroadcast, channel, topic, event, data, ids = [], inverse = false) {
     const packet = msp.eventPacket(topic, event, data)
 
     /**
@@ -83,11 +83,11 @@ class ClusterHop {
       }
 
       channel.broadcastPayload(topic, payload, ids, inverse)
-      this.sender('broadcast', topic, payload, { ids, inverse })
+      ipcBroadcast && this.sender('broadcast', topic, payload, { ids, inverse })
     })
   }
 
-  broadcastForTopic (channel, topic) {
+  broadcastForTopic (channel, topic, ipcBroadcast = true) {
     if (ChannelsManager.resolve(topic) !== channel) {
       return null
     }
@@ -96,15 +96,15 @@ class ClusterHop {
     
     return {
       broadcast (event, data, exceptIds = []) {
-        $this._broadcastEvent(channel, topic, event, data, exceptIds)
+        $this._broadcastEvent(ipcBroadcast, channel, topic, event, data, exceptIds)
       },
 
       broadcastToAll (event, data) {
-        $this._broadcastEvent(channel, topic, event, data)
+        $this._broadcastEvent(ipcBroadcast, channel, topic, event, data)
       },
 
       emitTo (event, data, ids) {
-        $this._broadcastEvent(channel, topic, event, data, ids, true)
+        $this._broadcastEvent(ipcBroadcast, channel, topic, event, data, ids, true)
       }
     }
   }

@@ -195,13 +195,6 @@ class Connection extends Emittery {
           return
         }
 
-        if (packet.length > 150) {
-          this.Logger.debug(
-            'WS _onMessage connection: %s, packet data: %j',
-            this.id, payload.d
-          )
-        }
-
         this._handleMessage(payload)
       })
   }
