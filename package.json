@@ -48,7 +48,7 @@
   "dependencies": {
     "@adonisjs/generic-exceptions": "^2.0.1",
     "@adonisjs/middleware-base": "^1.0.0",
-    "@uxtweak/adonis-websocket-packet": "^1.1.0",
+    "@uxtweak/adonis-websocket-packet": "^1.2.0",
     "cuid": "^2.1.8",
     "debug": "^4.1.1",
     "emittery": "^0.6.0",
