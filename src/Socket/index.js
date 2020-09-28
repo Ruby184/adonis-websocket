@@ -12,6 +12,7 @@
 const Emittery = require('emittery')
 const debug = require('debug')('adonis:websocket')
 const GE = require('@adonisjs/generic-exceptions')
+const { deserializeError } = require('@uxtweak/adonis-websocket-packet')
 
 /**
  * Socket is instance of a subscription for a given topic.
@@ -240,10 +241,10 @@ class Socket {
    *
    * @return {void}
    */
-  serverAckError (id, error) {
+  serverAckError ({ id, error }) {
     if (this._acks.has(id)) {
       const ack = this._acks.get(id)
-      ack(error)
+      ack(deserializeError(error))
       this._acks.delete(id)
     } else {
       debug('bad ack %s for %s topic', id, this.topic)

@@ -341,14 +341,12 @@ class Connection extends Emittery {
       return
     }
 
-    const { topic, id, ...error } = packet.d
-
-    if (!this.hasSubscription(topic)) {
+    if (!this.hasSubscription(packet.d.topic)) {
       this._notifyPacketDropped('_processAckError', 'dropping ack error since there are no subscription %j', packet)
       return
     }
 
-    this.getSubscription(topic).serverAckError(id, msp.deserializeError(error))
+    this.getSubscription(packet.d.topic).serverAckError(packet.d)
   }
 
     /**
