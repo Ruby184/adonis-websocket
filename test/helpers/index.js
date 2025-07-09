@@ -11,7 +11,7 @@
 
 const WebSocket = require('ws')
 const http = require('http')
-const cuid = require('cuid')
+const { createId } = require('@paralleldrive/cuid2')
 const querystring = require('querystring')
 
 module.exports = {
@@ -53,7 +53,7 @@ module.exports = {
   getFakeConnection () {
     return class FakeConnection {
       constructor (id) {
-        this.id = id || cuid()
+        this.id = id || createId()
       }
 
       encodePacket (message, cb) {

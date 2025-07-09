@@ -75,7 +75,7 @@ class ChannelsManager {
    * @param  {String} name
    * @param  {Function} onConnect
    */
-  add (clusterHop, name, onConnect) {
+  add (clusterHop, name, onConnect, handleException) {
     name = this._normalizeName(name)
 
     /**
@@ -83,7 +83,7 @@ class ChannelsManager {
      *
      * @type {Channel}
      */
-    const channel = new Channel(clusterHop, name, onConnect)
+    const channel = new Channel(clusterHop, name, onConnect, handleException)
 
     /**
      * Generate expressions for matching topics

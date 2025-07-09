@@ -22,7 +22,7 @@ class WsProvider extends ServiceProvider {
    * @private
    */
   _registerWs () {
-    this.app.singleton('Adonis/Addons/Ws', function (app) {
+    this.app.singleton('Adonis/Addons/Ws', (app) => {
       const Ws = require('../src/Ws')
       return new Ws(app.use('Adonis/Src/Config'), app.use('Adonis/Src/Logger'))
     })
@@ -39,10 +39,26 @@ class WsProvider extends ServiceProvider {
    * @private
    */
   _registerWsContext () {
-    this.app.bind('Adonis/Addons/WsContext', function (app) {
+    this.app.bind('Adonis/Addons/WsContext', () => {
       return require('../src/Context')
     })
     this.app.alias('Adonis/Addons/WsContext', 'WsContext')
+  }
+
+  /**
+   * Register the exception handler
+   *
+   * @method _registerExceptionHandler
+   *
+   * @return {void}
+   *
+   * @private
+   */
+  _registerExceptionHandler () {
+    this.app.bind('Adonis/Addons/WsBaseExceptionHandler', () => {
+      return require('../src/Exception/BaseHandler')
+    })
+    this.app.alias('Adonis/Addons/WsBaseExceptionHandler', 'WsBaseExceptionHandler')
   }
 
   /**
@@ -55,6 +71,7 @@ class WsProvider extends ServiceProvider {
   register () {
     this._registerWs()
     this._registerWsContext()
+    this._registerExceptionHandler()
   }
 
   /**

@@ -1,5 +1,5 @@
 const url = require('url')
-const cuid = require('cuid')
+const { createId } = require('@paralleldrive/cuid2')
 const ChannelManager = require('../Channel/Manager')
 const ConnectionState = require('./ConnectionState')
 
@@ -40,7 +40,7 @@ class RedisState {
 
   handleConnection (connection) {
     const { query } = url.parse(connection.req.url, true)
-    const state = query.state || cuid()
+    const state = query.state || createId()
 
     connection.state = new ConnectionState(this, state)
 
@@ -126,11 +126,11 @@ class RedisState {
   async _callExpiredOnController (id, topic, closedAt) {
     const channel = ChannelManager.resolve(topic)
 
-    if (!channel || typeof(channel._onConnect) !== 'string') {
+    if (!channel) {
       return
     }
 
-    const Controller = channel._getChannelController()
+    const Controller = channel.getChannelController()
 
     if (typeof (Controller['onExpiredState']) !== 'function') {
       return

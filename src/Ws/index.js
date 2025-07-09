@@ -9,11 +9,13 @@
  * file that was distributed with this source code.
 */
 
-const WebSocket = require('ws')
+const { WebSocketServer } = require('ws')
 const url = require('url')
+const { resolver, ioc } = require('@adonisjs/fold')
 const GE = require('@adonisjs/generic-exceptions')
 const Connection = require('../Connection')
 const ClusterHop = require('../ClusterHop')
+const Channel = require('../Channel')
 const ChannelManager = require('../Channel/Manager')
 const JsonEncoder = require('../JsonEncoder')
 const middleware = require('../Middleware')
@@ -68,7 +70,7 @@ class Ws {
      * Reference to actual websocket server. It will
      * be set when `listen` method is called.
      *
-     * @type {Websocket.Server}
+     * @type {WebSocketServer}
      */
     this._wsServer = null
 
@@ -96,12 +98,28 @@ class Ws {
     this._heartBeatTimer = null
 
     /**
+     * The exception handler used for reporting and handling errors
+     *
+     * @type {String}
+     */
+    this._exceptionHandler = null
+
+    /**
      * Instance of cluster hop with encoder to allow broadcast
      * between cluster workers
      *
      * @type {ClusterHop}
      */
     this._clusterHop = new ClusterHop(this._encoder)
+  }
+
+  /**
+   * Reference to @ref('Channel') class
+   *
+   * @attribute Channel
+   */
+  get Channel () {
+    return Channel
   }
 
   /**
@@ -167,6 +185,54 @@ class Ws {
   }
 
   /**
+   * Returns the exception handler to handle the WS exceptions
+   *
+   * @method _getExceptionHandler
+   *
+   * @return {Class}
+   *
+   * @private
+   */
+  _getExceptionHandler () {
+    try {
+      return ioc.use(resolver.forDir('exceptions').translate('WsHandler'))
+    } catch (_) {
+      return ioc.use('Adonis/Addons/WsBaseExceptionHandler')
+    }
+  }
+
+  /**
+   * Handles the exception by invoking `handle` method
+   * on the registered exception handler.
+   *
+   * @method handleException
+   *
+   * @param  {Object}         error
+   * @param  {Object}         ctx
+   *
+   * @return {void}
+   *
+   * @private
+   */
+  async _handleException (error, ctx) {
+    try {
+      const handler = ioc.make(this._exceptionHandler)
+
+      if (typeof (handler.handle) !== 'function' || typeof (handler.report) !== 'function') {
+        throw GE.RuntimeException.invoke(`${this._exceptionHandler.name} class must have handle and report methods on it`)
+      }
+
+      handler.report(error, ctx)
+
+      return await handler.handle(error, ctx)
+    } catch (err) {
+      this.Logger.error('Ws.handleException failed while trying to handle error', err)
+
+      return error
+    }
+  }
+
+  /**
    * Bind a single function to validate the handshakes
    *
    * @method onHandshake
@@ -212,7 +278,7 @@ class Ws {
    * @return {Channel}
    */
   channel (name, onConnect) {
-    return ChannelManager.add(this._clusterHop, name, onConnect)
+    return ChannelManager.add(this._clusterHop, name, onConnect, this._handleException.bind(this))
   }
 
   /**
@@ -280,7 +346,7 @@ class Ws {
    * @return {void}
    */
   listen (server) {
-    this._wsServer = new WebSocket.Server(Object.assign({}, this._serverOptions, { server }))
+    this._wsServer = new WebSocketServer(Object.assign({}, this._serverOptions, { server }))
 
     /**
      * Override the shouldHandle method to allow trailing slashes
@@ -296,6 +362,7 @@ class Ws {
 
     this._registerTimer()
     this._clusterHop.init()
+    this._exceptionHandler = this._getExceptionHandler()
   }
 
   /**
@@ -313,6 +380,7 @@ class Ws {
       this._connections.forEach((connection) => connection.terminate('closing server'))
       this._wsServer.close()
       this._clearTimer()
+      this._exceptionHandler = null
     }
   }
 

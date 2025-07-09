@@ -9,9 +9,10 @@
  * file that was distributed with this source code.
 */
 
+const Macroable = require('macroable')
 const GE = require('@adonisjs/generic-exceptions')
 const debug = require('debug')('adonis:websocket')
-const middleware = require('../Middleware')
+const EventExecutor = require('./EventExecutor')
 
 /**
  * Channel class gives a simple way to divide the application
@@ -22,26 +23,15 @@ const middleware = require('../Middleware')
  * @param {String} name         Unique channel name
  * @param {Function} onConnect  Function to be invoked when a socket joins a Channel
  */
-class Channel {
-  constructor (clusterHop, name, onConnect) {
-    this._validateArguments(name, onConnect)
-    
-    this.name = name
-    
-    this._clusterHop = clusterHop
-    this._onConnect = onConnect
+class Channel extends Macroable {
+  constructor (clusterHop, name, onConnect, handleException) {
+    super()
 
-    /**
-     * If channel controller is an ES6 class, then we let users
-     * define listeners using a convention by prefixing `on`
-     * in front of their methods.
-     *
-     * Instead of re-findings these listeners again and again on
-     * the class prototype, we just pull them for once.
-     *
-     * @type {Array}
-     */
-    this._channelControllerListeners = []
+    this._validateArguments(name, onConnect)
+
+    this.name = name
+    this._clusterHop = clusterHop
+    this.executor = new EventExecutor(onConnect, handleException)
 
     /**
      * All of the channel subscriptions are grouped
@@ -56,11 +46,6 @@ class Channel {
     this.subscriptions = new Map()
 
     /**
-     * Named middleware defined on the channel
-     */
-    this._middleware = []
-
-    /**
      * The method attached as an event listener to each
      * subscription.
      */
@@ -68,7 +53,7 @@ class Channel {
       const topic = this.subscriptions.get(subscription.topic)
       debug('removing channel subscription for %s topic', subscription.topic)
 
-      if (topic && topic.delete(subscription) && topic.size === 0) {
+      if (topic && topic.delete(subscription) && topic.size === 0) {
         this.subscriptions.delete(subscription.topic)
       }
     }.bind(this)
@@ -100,106 +85,14 @@ class Channel {
   }
 
   /**
-   * Executes the middleware stack
+   * Returns the channel controller Class.
    *
-   * @method _executeMiddleware
-   *
-   * @param  {Object}           context
-   *
-   * @return {Promise}
-   *
-   * @private
-   */
-  _executeMiddleware (context) {
-    return middleware
-      .composeGlobalAndNamed(this._middleware)
-      .params([context])
-      .run()
-  }
-
-  /**
-   * Returns the channel controller Class when it is a string.
-   *
-   * This method relies of the globals of `ioc container`.
-   *
-   * @method _getChannelController
+   * @method getChannelController
    *
    * @return {Class}
-   *
-   * @private
    */
-  _getChannelController () {
-    const namespace = global.iocResolver.forDir('wsControllers').translate(this._onConnect)
-    return global.use(namespace)
-  }
-
-  /**
-   * Returns the listeners on the controller class
-   *
-   * @method _getChannelControllerListeners
-   *
-   * @param  {Class}                       Controller
-   *
-   * @return {Array}
-   *
-   * @private
-   */
-  _getChannelControllerListeners (Controller) {
-    if (!this._channelControllerListeners.length) {
-      /**
-       * Looping over each method of the class prototype
-       * and pulling listeners from them
-       */
-      this._channelControllerListeners = Object
-        .getOwnPropertyNames(Controller.prototype)
-        .filter((method) => method.startsWith('on') && method !== 'on')
-        .map((method) => {
-          const eventName = method.replace(/^on(\w)/, (match, group) => group.toLowerCase())
-          return { eventName, method }
-        })
-    }
-
-    return this._channelControllerListeners
-  }
-
-  /**
-   * Invokes the onConnect handler for the channel.
-   *
-   * @method _callOnConnect
-   *
-   * @param  {Object}       context
-   *
-   * @return {void}
-   */
-  _callOnConnect (context) {
-    /**
-     * When the onConnect handler is a plain function
-     */
-    if (typeof (this._onConnect) === 'function') {
-      process.nextTick(() => {
-        this._onConnect(context)
-      })
-      return
-    }
-
-    /**
-     * When onConnect handler is a reference to the channel
-     * controler
-     */
-    const Controller = this._getChannelController()
-    const controllerListeners = this._getChannelControllerListeners(Controller)
-
-    /**
-     * Calling onConnect in the next tick, so that the parent
-     * connection saves a reference to it, before the closure
-     * is executed.
-     */
-    process.nextTick(() => {
-      const controller = new Controller(context)
-      controllerListeners.forEach((item) => {
-        context.socket.on(item.eventName, controller[item.method].bind(controller))
-      })
-    })
+  getChannelController () {
+    return this.executor.getChannelController()
   }
 
   /**
@@ -232,13 +125,13 @@ class Channel {
    * @return {void}
    */
   async joinTopic (context) {
-    await this._executeMiddleware(context)
-    const subscriptions = this.getTopicSubscriptions(context.socket.topic)
+    await this.executor.executeMiddleware(context)
 
     /**
      * Add new subscription to existing subscriptions
      */
-    subscriptions.add(context.socket)
+    this.getTopicSubscriptions(context.socket.topic).add(context.socket)
+
     debug('adding channel subscription for %s topic', context.socket.topic)
 
     /**
@@ -253,7 +146,10 @@ class Channel {
      */
     context.socket.on('close', this.deleteSubscription)
 
-    this._callOnConnect(context)
+    return async () => this.executor.callOnConnect(context).catch((error) => {
+      this.deleteSubscription(context.socket)
+      return Promise.reject(error)
+    })
   }
 
   /**
@@ -268,7 +164,30 @@ class Channel {
    */
   middleware (middleware) {
     const middlewareList = Array.isArray(middleware) ? middleware : [middleware]
-    this._middleware = this._middleware.concat(middlewareList)
+    this.executor.addMiddleware(middlewareList)
+
+    return this
+  }
+
+  /**
+   * Adds one or more interceptors to events emitted on the channel.
+   * Interceptors allow you to transform event data, returned output, or exceptions.
+   *
+   * @method interceptor
+   * @param {Function|Function[]} interceptor - A single interceptor function or an array of interceptor functions.
+   * @param {String|String[]} [eventNames='*'] - The event name(s) to apply the interceptor(s) to. Defaults to all events.
+   * @returns {Channel} Returns the current Channel instance for chaining.
+   */
+  interceptor (interceptor, eventNames = '*') {
+    const inerceptorList = Array.isArray(interceptor) ? interceptor : [interceptor]
+    const eventNameList = Array.isArray(eventNames) ? eventNames : [eventNames]
+
+    for (const handler of inerceptorList) {
+      for (const eventName of eventNameList) {
+        this.executor.addInterceptor(handler, eventName)
+      }
+    }
+
     return this
   }
 
@@ -298,7 +217,7 @@ class Channel {
    * @return {void}
    */
   broadcastPayload (topic, payload, filterSockets = [], inverse = false) {
-    this.subscriptions.has(topic) && this.getTopicSubscriptions(topic).forEach((socket) => {
+    this.subscriptions.has(topic) && this.getTopicSubscriptions(topic).forEach((socket) => {
       const socketIndex = filterSockets.indexOf(socket.id)
       const shouldSend = inverse ? socketIndex > -1 : socketIndex === -1
 

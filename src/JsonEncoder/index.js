@@ -43,14 +43,15 @@ module.exports = {
    *
    * @return {void}
    */
-  decode (payload, callback) {
+  decode (payload, callback, isBinary) {
     let decoded = null
 
     try {
-      decoded = JSON.parse(payload)
+      decoded = JSON.parse(isBinary ? payload : payload.toString())
     } catch (error) {
       return callback(error)
     }
+
     callback(null, decoded)
   }
 }

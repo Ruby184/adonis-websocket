@@ -48,12 +48,12 @@
   "dependencies": {
     "@adonisjs/generic-exceptions": "^2.0.1",
     "@adonisjs/middleware-base": "^1.0.0",
+    "@paralleldrive/cuid2": "^2.2.2",
     "@uxtweak/adonis-websocket-packet": "^1.2.2",
-    "cuid": "^2.1.8",
-    "debug": "^4.1.1",
-    "emittery": "^0.6.0",
+    "debug": "^4.4.1",
+    "emittery": "^1.2.0",
     "macroable": "^1.0.0",
-    "ws": "^7.2.3"
+    "ws": "^8.18.3"
   },
   "publishConfig": {
     "registry": "https://verdaccio.uxt"

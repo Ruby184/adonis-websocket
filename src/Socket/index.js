@@ -25,9 +25,11 @@ const { deserializeError } = require('@uxtweak/adonis-websocket-packet')
  * @param {Connect} connection
  */
 class Socket {
-  constructor (topic, connection) {
+  constructor (topic, connection, context) {
     this._acks = new Map()
     this._nextAckId = 0
+    this._handlerMap = new Map()
+    this._eventExecutorCache = new Map()
 
     this.channel = null
 
@@ -46,7 +48,30 @@ class Socket {
       get () { return `${topic}#${connection.id}` }
     })
 
+    Object.defineProperty(this, 'context', {
+      get () { return context }
+    })
+
     this.emitter = new Emittery()
+  }
+
+  setHandler (eventName, handler) {
+    if (this._handlerMap.has(eventName)) {
+      throw GE.InvalidArgumentException.invoke(`Trying to set duplicate event handler for "${eventName}" on topic "${this.topic}".`)
+    }
+
+    this._handlerMap.set(eventName, handler)
+  }
+
+  async _finalEventHandler (eventName, finalData) {
+    const handler = this._handlerMap.get(eventName)
+
+    const [result] = await Promise.all([
+      handler && handler(finalData),
+      this.emitter.emit(eventName, finalData)
+    ])
+
+    return result
   }
 
   /**
@@ -207,8 +232,20 @@ class Socket {
    *
    * @return {Promise}
    */
-  serverMessage ({ event, data }) {
-    return this.emitter.emit(event, data)
+  async serverMessage ({ event, data }) {
+    let executor = this._eventExecutorCache.get(event)
+
+    if (!executor) {
+      executor = this.channel.executor.intercept(
+        event,
+        this._finalEventHandler.bind(this, event),
+        this.context
+      )
+
+      this._eventExecutorCache.set(event, executor)
+    }
+
+    return executor(data)
   }
 
   /**
@@ -260,16 +297,14 @@ class Socket {
    * @return {Promise}
    */
   serverClose () {
-    return this.emitter
-      .emit('close', this)
-      .then(() => {
-        this.emitter.clearListeners()
-        this._acks.clear()
-      })
-      .catch(() => {
-        this.emitter.clearListeners()
-        this._acks.clear()
-      })
+    const cleanup = () => {
+      this.emitter.clearListeners()
+      this._acks.clear()
+      this._handlerMap.clear()
+      this._eventExecutorCache.clear()
+    }
+
+    return this.emitter.emit('close', this).then(cleanup).catch(cleanup)
   }
 
   /**

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
 */
 
-const cuid = require('cuid')
+const { createId } = require('@paralleldrive/cuid2')
 const Emittery = require('emittery')
 const debug = require('debug')('adonis:websocket')
 const msp = require('@uxtweak/adonis-websocket-packet')
@@ -41,12 +41,12 @@ class Connection extends Emittery {
     this.req = req
 
     /**
-     * Each connection must have a unique id. The `cuid` keeps
+     * Each connection must have a unique id. The `cuid2` keeps
      * it unique across the cluster
      *
      * @type {String}
      */
-    this.id = cuid()
+    this.id = createId()
 
     /**
      * The encoder is used to encode and decode packets. Note this is
@@ -150,7 +150,7 @@ class Connection extends Emittery {
    *
    * @private
    */
-  _openPacket (packet) {
+  _openPacket (packet, isBinary) {
     return new Promise((resolve) => {
       if (packet.length >= 5) {
         this.Logger.debug(`WS openPacket connection: %s, length: %d`, this.id, packet.length)
@@ -161,7 +161,7 @@ class Connection extends Emittery {
           return resolve({})
         }
         resolve(payload)
-      })
+      }, isBinary)
     })
   }
 
@@ -179,7 +179,7 @@ class Connection extends Emittery {
    *
    * @private
    */
-  _onMessage (packet) {
+  _onMessage (packet, isBinary) {
     /**
      * Reset ping elapsed
      *
@@ -188,7 +188,7 @@ class Connection extends Emittery {
     this.pingElapsed = 0
 
     this
-      ._openPacket(packet)
+      ._openPacket(packet, isBinary)
       .then((payload) => {
         if (!payload.t) {
           this._notifyPacketDropped('_onMessage', 'packet dropped, there is no {t} property %j', payload)
@@ -283,9 +283,9 @@ class Connection extends Emittery {
 
     if (typeof (id) !== 'undefined') {
       result
-        .then((responses) => {
-          const data = responses.find((response) => typeof (response) !== 'undefined')
+        .then((data) => {
           this.sendAckPacket(topic, id, data)
+
           this.Logger.debug(
             'WS _processEvent connection: %s, packet: %j, response: %j',
             this.id, packet.d, data
@@ -293,11 +293,15 @@ class Connection extends Emittery {
         })
         .catch((error) => {
           this.sendAckErrorPacket(topic, id, error)
+
           this.Logger.error(
             'WS _processEvent connection: %s, packet: %j, %s: %s',
             this.id, packet.d, error.message, error.stack
           )
         })
+    } else {
+      // just ignore error as it is already handled by exception handler
+      result.catch(() => {})
     }
   }
 
@@ -460,6 +464,7 @@ class Connection extends Emittery {
        * Ensure topic channel does exists, otherwise return error
        */
       const channel = ChannelsManager.resolve(packet.d.topic)
+
       if (!channel) {
         return reject(msp.joinErrorPacket(packet.d.topic, 'Topic cannot be handled by any channel'))
       }
@@ -470,12 +475,20 @@ class Connection extends Emittery {
        * @type {Context}
        */
       const context = new Context(this.req)
-      context.socket = new Socket(packet.d.topic, this)
+
+      context.socket = new Socket(packet.d.topic, this, context)
 
       channel
         .joinTopic(context)
-        .then(() => {
+        .then((callOnConnect) => {
           this.addSubscription(packet.d.topic, context.socket)
+
+          return callOnConnect().catch((err) => {
+            this.deleteSubscription(context.socket)
+            return Promise.reject(err)
+          })
+        })
+        .then(() => {
           resolve(msp.joinAckPacket(packet.d.topic))
         })
         .catch((error) => {
@@ -542,9 +555,9 @@ class Connection extends Emittery {
    *
    * @private
    */
-  _onClose () {
+  _onClose (code, data) {
     this._subscriptions.forEach((subscription) => (this.closeSubscription(subscription)))
-    debug('closing underlying connection')
+    debug('closing underlying connection with code: %s, reason: %s', code, data.toString())
 
     this
       .emit('close', this)
