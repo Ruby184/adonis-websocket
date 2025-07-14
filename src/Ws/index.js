@@ -216,18 +216,10 @@ class Ws {
    */
   async _handleException (error, ctx) {
     try {
-      const handler = ioc.make(this._exceptionHandler)
-
-      if (typeof (handler.handle) !== 'function' || typeof (handler.report) !== 'function') {
-        throw GE.RuntimeException.invoke(`${this._exceptionHandler.name} class must have handle and report methods on it`)
-      }
-
-      handler.report(error, ctx)
-
-      return await handler.handle(error, ctx)
+      this._exceptionHandler.report(error, ctx)
+      return await this._exceptionHandler.handle(error, ctx)
     } catch (err) {
-      this.Logger.error('Ws.handleException failed while trying to handle error', err)
-
+      this.Logger.error('Ws._handleException failed while trying to handle error', err)
       return error
     }
   }
@@ -251,7 +243,7 @@ class Ws {
   }
 
   /**
-   * Bind a single function on coinnection is created
+   * Bind a single function when connection is created
    *
    * @method onHandshake
    *
@@ -305,7 +297,7 @@ class Ws {
    * @return {void}
    */
   async handle (ws, req) {
-    const connection = new Connection(ws, req, this._encoder, this.Logger)
+    const connection = new Connection(ws, req, this._encoder)
 
     /**
      * Important to leave the connection instance, when it closes to
@@ -334,6 +326,14 @@ class Ws {
     connection.sendOpenPacket(options)
 
     this._connections.add(connection)
+
+    if (this._exceptionHandler && typeof (this._exceptionHandler.onConnection) === 'function') {
+      try {
+        await this._exceptionHandler.onConnection(connection, options)
+      } catch (error) {
+        this.Logger.error(`Exception handler ${this._exceptionHandler.constructor.name}.onConnection failed while trying to handle connection`, error)
+      }
+    }
   }
 
   /**
@@ -346,6 +346,12 @@ class Ws {
    * @return {void}
    */
   listen (server) {
+    this._exceptionHandler = ioc.make(this._getExceptionHandler())
+
+    if (typeof (this._exceptionHandler.handle) !== 'function' || typeof (this._exceptionHandler.report) !== 'function') {
+      throw GE.RuntimeException.invoke(`Exception handler ${this._exceptionHandler.constructor.name} class must have handle and report methods on it`)
+    }
+
     this._wsServer = new WebSocketServer(Object.assign({}, this._serverOptions, { server }))
 
     /**
@@ -362,7 +368,6 @@ class Ws {
 
     this._registerTimer()
     this._clusterHop.init()
-    this._exceptionHandler = this._getExceptionHandler()
   }
 
   /**
@@ -422,6 +427,32 @@ class Ws {
    */
   registerNamed (list) {
     middleware.registerNamed(list)
+    return this
+  }
+
+  /**
+   * Register a list of interceptors to be used by all channels
+   *
+   * @method registerInterceptors
+   *
+   * @param  {Array}      list
+   *
+   * @chainable
+   *
+   * @example
+   * ```js
+   * Ws.registerInterceptors([
+   *   'App/Interceptors/Log',
+   *   'App/Interceptors/Validate'
+   * ])
+   * ```
+   */
+  registerInterceptors (list) {
+    if (!Array.isArray(list)) {
+      throw GE.InvalidArgumentException.invalidParameter('Ws.registerInterceptors expects an array of interceptors', list)
+    }
+
+    ChannelManager.addGlobalInterceptors(list)
     return this
   }
 }

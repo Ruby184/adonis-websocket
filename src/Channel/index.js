@@ -174,21 +174,26 @@ class Channel extends Macroable {
    * Interceptors allow you to transform event data, returned output, or exceptions.
    *
    * @method interceptor
-   * @param {Function|Function[]} interceptor - A single interceptor function or an array of interceptor functions.
-   * @param {String|String[]} [eventNames='*'] - The event name(s) to apply the interceptor(s) to. Defaults to all events.
+   * @param {Function|string|Function[]} interceptor - A single interceptor function or an array of interceptor functions.
+   * @param {string|string[]} [eventNames=EventExecutor.INTERCEPTOR_ALL_EVENTS] - The event name(s) to apply the interceptor(s) to. Defaults to all events.
+   * @param {Array} [params=[]] - Additional parameters to pass to the interceptor(s).
    * @returns {Channel} Returns the current Channel instance for chaining.
    */
-  interceptor (interceptor, eventNames = '*') {
-    const inerceptorList = Array.isArray(interceptor) ? interceptor : [interceptor]
-    const eventNameList = Array.isArray(eventNames) ? eventNames : [eventNames]
-
-    for (const handler of inerceptorList) {
-      for (const eventName of eventNameList) {
-        this.executor.addInterceptor(handler, eventName)
-      }
+  interceptor (interceptor, eventNames = EventExecutor.INTERCEPTOR_ALL_EVENTS, params = []) {
+    for (const handler of Array.isArray(interceptor) ? interceptor : [interceptor]) {
+      this.executor.addInterceptor(eventNames, handler, params)
     }
 
     return this
+  }
+
+  /**
+   * Adds a global interceptor that applies to all events on the channel.
+   * @param {Function|string|Function[]} interceptors
+   * @returns {Channel} Returns the current Channel instance for chaining.
+   */
+  globalInterceptors (interceptors) {
+    return this.interceptor(interceptors, EventExecutor.INTERCEPTOR_GLOBAL)
   }
 
   /**

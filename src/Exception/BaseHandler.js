@@ -22,30 +22,12 @@ class BaseExceptionHandler {
    *
    * @private
    */
-  _convertToClientError (error, isDev = false) {
-    return Object.assign(new Error(isDev ? error.message : 'An error occurred while processing the request'), {
+  _convertToClientError (error, withStack = false, useErrorMessage = withStack) {
+    return Object.assign(new Error(useErrorMessage ? error.message : 'An error occurred while processing the request'), {
       code: error.code || 'E_GENERIC',
       status: error.status || 500,
-      stack: isDev ? error.stack : '',
+      stack: withStack ? error.stack : '',
     })
-  }
-
-  /**
-   * The default handler to report exception when no one handles
-   * a given exception
-   *
-   * @method _defaultHandler
-   *
-   * @param  {Object}        error
-   * @param  {Object}        options.request
-   * @param  {Object}        options.response
-   *
-   * @return {void}
-   *
-   * @private
-   */
-  async _defaultHandler (error) {
-    return this._convertToClientError(error, process.env.NODE_ENV === 'development')
   }
 
   /**
@@ -59,11 +41,13 @@ class BaseExceptionHandler {
    * @return {Mixed}
    */
   async handle (error, ctx) {
-    if (typeof (error.wsHandle) === 'function') {
-      return error.wsHandle(error, ctx)
+    const isDev = process.env.NODE_ENV === 'development'
+
+    if (typeof (error.toJSON) === 'function') {
+      return this._convertToClientError(error.toJSON(ctx), isDev, true)
     }
 
-    return this._defaultHandler(error, ctx)
+    return this._convertToClientError(error, isDev)
   }
 
   /**

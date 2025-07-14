@@ -33,10 +33,9 @@ const ChannelsManager = require('../Channel/Manager')
  * @param {Object} encoder  Encoder to be used for encoding/decoding messages
  */
 class Connection extends Emittery {
-  constructor (ws, req, encoder, Logger) {
+  constructor (ws, req, encoder) {
     super()
 
-    this.Logger = Logger
     this.ws = ws
     this.req = req
 
@@ -105,8 +104,6 @@ class Connection extends Emittery {
     this.ws.on('message', this._onMessage.bind(this))
     this.ws.on('error', this._onError.bind(this))
     this.ws.on('close', this._onClose.bind(this))
-
-    this.Logger.debug(`WS newConnection connection: %s, ip: %s`, this.id, this.req.headers['x-forwarded-for'] || this.req.connection.remoteAddress)
   }
 
   /**
@@ -136,7 +133,6 @@ class Connection extends Emittery {
    */
   _notifyPacketDropped (fn, message, ...args) {
     debug(`${fn}:${message}`, ...args)
-    this.Logger.debug(`${fn}:${message}`, ...args)
   }
 
   /**
@@ -152,10 +148,6 @@ class Connection extends Emittery {
    */
   _openPacket (packet, isBinary) {
     return new Promise((resolve) => {
-      if (packet.length >= 5) {
-        this.Logger.debug(`WS openPacket connection: %s, length: %d`, this.id, packet.length)
-      }
-
       this._encoder.decode(packet, (error, payload) => {
         if (error) {
           return resolve({})
@@ -285,19 +277,9 @@ class Connection extends Emittery {
       result
         .then((data) => {
           this.sendAckPacket(topic, id, data)
-
-          this.Logger.debug(
-            'WS _processEvent connection: %s, packet: %j, response: %j',
-            this.id, packet.d, data
-          )
         })
         .catch((error) => {
           this.sendAckErrorPacket(topic, id, error)
-
-          this.Logger.error(
-            'WS _processEvent connection: %s, packet: %j, %s: %s',
-            this.id, packet.d, error.message, error.stack
-          )
         })
     } else {
       // just ignore error as it is already handled by exception handler

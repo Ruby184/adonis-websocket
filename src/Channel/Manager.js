@@ -21,6 +21,7 @@ class ChannelsManager {
   constructor () {
     this.channels = new Map()
     this._channelExpressions = []
+    this._globalInterceptors = []
   }
 
   /**
@@ -65,6 +66,25 @@ class ChannelsManager {
   clear () {
     this.channels = new Map()
     this._channelExpressions = []
+    this._globalInterceptors = []
+  }
+
+  /**
+   * This method allows you to add interceptors that will be applied to all channels.
+   * It is useful for applying common logic across all channels, such as logging or error handling
+   * without needing to add them to each channel individually.
+   * The interceptors will be applied to all events emitted on the channels.
+   * 
+   * @method addGlobalInterceptors
+   * @param {Array} interceptors - An array of interceptor functions to be added globally.
+   * @return {void}
+   */
+  addGlobalInterceptors (interceptors) {
+    this._globalInterceptors.push(...interceptors)
+
+    for (const channel of this.channels.values()) {
+      channel.globalInterceptors(interceptors)
+    }
   }
 
   /**
@@ -83,7 +103,7 @@ class ChannelsManager {
      *
      * @type {Channel}
      */
-    const channel = new Channel(clusterHop, name, onConnect, handleException)
+    const channel = new Channel(clusterHop, name, onConnect, handleException).globalInterceptors(this._globalInterceptors)
 
     /**
      * Generate expressions for matching topics

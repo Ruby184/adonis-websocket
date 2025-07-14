@@ -5,12 +5,27 @@ const haye = require('haye')
 const middleware = require('../Middleware')
 const CONTROLLER_LISTENERS_SYMBOL = Symbol('CONTROLLER_LISTENERS_SYMBOL')
 const hasOwn = Object.call.bind(Object.hasOwnProperty)
+const INTERCEPTOR_GLOBAL = Symbol('INTERCEPTOR_GLOBAL')
+const INTERCEPTOR_ALL_EVENTS = Symbol('INTERCEPTOR_ALL_EVENTS')
 
 /**
  * EventExecutor is responsible for managing channel event handlers, interceptors, and middleware.
  * It resolves controllers, executes middleware, and applies interceptors to channel events.
  */
 class EventExecutor {
+
+  static get CONTROLLER_LISTENERS_SYMBOL () {
+    return CONTROLLER_LISTENERS_SYMBOL
+  }
+
+  static get INTERCEPTOR_GLOBAL () {
+    return INTERCEPTOR_GLOBAL
+  }
+
+  static get INTERCEPTOR_ALL_EVENTS () {
+    return INTERCEPTOR_ALL_EVENTS
+  }
+
   /**
    * @param {Function|string} onConnect - The controller class or namespace, or a function to handle onConnect.
    * @param {Function} handleException - Exception handler function.
@@ -29,19 +44,38 @@ class EventExecutor {
      * Named middleware defined on the channel
      */
     this._middleware = []
+
+    /**
+     * Adds a global interceptor that handles exceptions for all events.
+     * This interceptor catches errors thrown by event handlers and passes them to the exception handler.
+     */
+    this.addInterceptor(INTERCEPTOR_GLOBAL, async (data, next, context) => {
+      try {
+        return await next(data)
+      } catch (error) {
+        return this._handleException(error, context).then((err) => Promise.reject(err))
+      }
+    })
   }
 
   /**
-   * Adds an interceptor for a specific event or all events.
-   * @param {Function|string} handler - The interceptor handler or its namespace string.
-   * @param {string} [event='*'] - The event name to intercept, or '*' for all events.
+   * Adds an interceptor which is global or for a specific event or all events.
+   *
+   * @param {string[]|symbol} events - The name of the events to intercept.
+   * @param {Function|string} handler - The interceptor function to handle the event.
+   * @param {Array} [params=[]] - Additional parameters to pass to the interceptor.
+   * @returns {void}
    */
-  addInterceptor (handler, event = '*') {
-    if (!this._interceptors.has(event)) {
-      this._interceptors.set(event, [])
-    }
+  addInterceptor (events, handler, params = []) {
+    const interceptor = this._compileInterceptor(handler, params)
 
-    this._interceptors.get(event).push(this._compileInterceptor(handler))
+    for (const event of Array.isArray(events) ? events : [events]) {
+      if (!this._interceptors.has(event)) {
+        this._interceptors.set(event, [])
+      }
+
+      this._interceptors.get(event).push(interceptor)
+    }
   }
 
   /**
@@ -55,21 +89,19 @@ class EventExecutor {
   /**
    * Compiles an interceptor handler into a standard format.
    * @param {Function|string} interceptor - The interceptor handler or its namespace string.
+   * @param {Array} [params=[]] - Additional parameters to pass to the interceptor.
    * @returns {Object} Compiled interceptor object.
    */
-  _compileInterceptor (interceptor) {
+  _compileInterceptor (interceptor, params = []) {
     if (typeof (interceptor) === 'function') {
-      return {
-        namespace: interceptor,
-        params: []
-      }
+      return { namespace: interceptor, params }
     }
 
     const [{ name, args }] = haye.fromPipe(interceptor).toArray()
 
     return {
       namespace: `${name}.intercept`,
-      params: args
+      params: args.concat(params)
     }
   }
 
@@ -180,48 +212,39 @@ class EventExecutor {
 
   /**
    * Gets the list of interceptor handlers for a given event.
-   * @param {string} event - The event name.
+   * Interceptors are applied in the following order: global, all-events, then event-specific.
+   * @param {string} eventName - The event name.
    * @returns {Array<Function>} Array of interceptor functions.
    */
-  getInterceptors (event) {
-    const handlers = [
-      async (data, next, context) => {
-        try {
-          return await next(data)
-        } catch (error) {
-          return this._handleException(error, context).then((err) => Promise.reject(err))
-        }
+  getInterceptors (eventName) {
+    const interceptors = []
+
+    for (const interceptorType of [INTERCEPTOR_GLOBAL, INTERCEPTOR_ALL_EVENTS, eventName]) {
+      if (this._interceptors.has(interceptorType)) {
+        interceptors.push(...this._interceptors.get(interceptorType))
       }
-    ]
-
-    if (this._interceptors.has('*')) {
-      handlers.push(...this._interceptors.get('*'))
     }
 
-    if (this._interceptors.has(event)) {
-      handlers.push(...this._interceptors.get(event))
-    }
-
-    return handlers.map((interceptor) => this._resolveInterceptor(interceptor))
+    return interceptors.map((interceptor) => this._resolveInterceptor(interceptor))
   }
 
   /**
    * Applies interceptors to an event handler, returning a composed handler function.
-   * @param {string} event - The event name.
+   * @param {string} eventName - The event name.
    * @param {Function} finalHandler - The final event handler.
    * @param {Object} context - The context object.
    * @returns {Function} The composed handler function with interceptors applied.
    */
-  intercept (event, finalHandler, context) {
+  intercept (eventName, finalHandler, context) {
     const ctx = Object.create(
       Object.getPrototypeOf(context),
       {
         ...Object.getOwnPropertyDescriptors(context),
-        eventName: { value: event, configurable: true, enumerable: true, writable: false },
+        eventName: { value: eventName, configurable: true, enumerable: true, writable: false },
       }
     )
 
-    return this.getInterceptors(event).reduceRight(
+    return this.getInterceptors(eventName).reduceRight(
       (next, handler) => async (data) => {
         return await handler(data, next, ctx)
       },
