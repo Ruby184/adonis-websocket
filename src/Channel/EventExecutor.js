@@ -232,23 +232,15 @@ class EventExecutor {
    * Applies interceptors to an event handler, returning a composed handler function.
    * @param {string} eventName - The event name.
    * @param {Function} finalHandler - The final event handler.
-   * @param {Object} context - The context object.
    * @returns {Function} The composed handler function with interceptors applied.
    */
-  intercept (eventName, finalHandler, context) {
-    const ctx = Object.create(
-      Object.getPrototypeOf(context),
-      {
-        ...Object.getOwnPropertyDescriptors(context),
-        eventName: { value: eventName, configurable: true, enumerable: true, writable: false },
-      }
-    )
-
+  intercept (eventName, finalHandler) {
     return this.getInterceptors(eventName).reduceRight(
-      (next, handler) => async (data) => {
-        return await handler(data, next, ctx)
+      (next, handler) => async (data, context) => {
+        const wrappedNext = async (newData) => next(newData, context)
+        return await handler(data, wrappedNext, context)
       },
-      async (finalData) => finalHandler(finalData)
+      async (finalData, context) => finalHandler(finalData, context)
     )
   }
 }

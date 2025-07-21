@@ -51,6 +51,24 @@ class WsContext extends Macroable {
       .forEach((fn) => fn(this))
   }
 
+  clone (props = {}) {
+    const ctx = Object.create(
+      Object.getPrototypeOf(this),
+      {
+        ...Object.getOwnPropertyDescriptors(this),
+        ...Object.fromEntries(Object.entries(props).map(
+          ([key, value]) => [key, { value, configurable: true, enumerable: true, writable: false }]
+        ))
+      }
+    )
+
+    this.constructor._cloneFns
+      .filter((fn) => typeof (fn) === 'function')
+      .forEach((fn) => fn(ctx))
+
+    return ctx
+  }
+
   /**
    * Hydrate the context constructor
    *
@@ -61,6 +79,7 @@ class WsContext extends Macroable {
   static hydrate () {
     super.hydrate()
     this._readyFns = []
+    this._cloneFns = []
   }
 
   /**
@@ -77,6 +96,21 @@ class WsContext extends Macroable {
     this._readyFns.push(fn)
     return this
   }
+
+  /**
+   * Define onClone callbacks to be executed
+   * once the request context is cloned
+   *
+   * @method onReady
+   *
+   * @param  {Function} fn
+   *
+   * @chainable
+   */
+  static onClone (fn) {
+    this._cloneFns.push(fn)
+    return this
+  }
 }
 
 /**
@@ -88,5 +122,6 @@ class WsContext extends Macroable {
 WsContext._macros = {}
 WsContext._getters = {}
 WsContext._readyFns = []
+WsContext._cloneFns = []
 
 module.exports = WsContext

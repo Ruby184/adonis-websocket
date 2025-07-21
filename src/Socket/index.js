@@ -53,6 +53,18 @@ class Socket {
     })
 
     this.emitter = new Emittery()
+
+    this._finalEventHandler = async (finalData, context) => {
+      const eventName = context.event.name
+      const handler = this._handlerMap.get(eventName)
+
+      const [response] = await Promise.all([
+        handler && handler(finalData, context),
+        this.emitter.emit(eventName, finalData)
+      ])
+
+      return response
+    }
   }
 
   setHandler (eventName, handler) {
@@ -61,17 +73,6 @@ class Socket {
     }
 
     this._handlerMap.set(eventName, handler)
-  }
-
-  async _finalEventHandler (eventName, finalData) {
-    const handler = this._handlerMap.get(eventName)
-
-    const [result] = await Promise.all([
-      handler && handler(finalData),
-      this.emitter.emit(eventName, finalData)
-    ])
-
-    return result
   }
 
   /**
@@ -166,7 +167,7 @@ class Socket {
    *
    * @return {void}
    */
-  broadcast (event, data, exceptIds = [this.id]) {
+  broadcast (event, data, exceptIds = [this.connection.id]) {
     if (!Array.isArray(exceptIds)) {
       throw GE.InvalidArgumentException.invalidParameter('broadcast expects 3rd parameter to be an array of socket ids', exceptIds)
     }
@@ -236,16 +237,15 @@ class Socket {
     let executor = this._eventExecutorCache.get(event)
 
     if (!executor) {
-      executor = this.channel.executor.intercept(
-        event,
-        this._finalEventHandler.bind(this, event),
-        this.context
-      )
-
+      executor = this.channel.executor.intercept(event, this._finalEventHandler)
       this._eventExecutorCache.set(event, executor)
     }
 
-    return executor(data)
+    const context = this.context.clone({
+      event: Object.freeze({ name: event, data })
+    })
+
+    return executor(data, context)
   }
 
   /**

@@ -219,7 +219,7 @@ class Ws {
       this._exceptionHandler.report(error, ctx)
       return await this._exceptionHandler.handle(error, ctx)
     } catch (err) {
-      this.Logger.error('Ws._handleException failed while trying to handle error', err)
+      this.Logger.crit('Ws._handleException failed while trying to handle error: ', err)
       return error
     }
   }
@@ -331,7 +331,7 @@ class Ws {
       try {
         await this._exceptionHandler.onConnection(connection, options)
       } catch (error) {
-        this.Logger.error(`Exception handler ${this._exceptionHandler.constructor.name}.onConnection failed while trying to handle connection`, error)
+        this.Logger.crit(`Exception handler ${this._exceptionHandler.constructor.name}.onConnection failed while trying to handle connection: `, error)
       }
     }
   }

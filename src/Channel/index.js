@@ -222,9 +222,12 @@ class Channel extends Macroable {
    * @return {void}
    */
   broadcastPayload (topic, payload, filterSockets = [], inverse = false) {
+    // split socket id to get connection id (compatibility with socket ids)
+    const filterSocketsSet = new Set(filterSockets.map((id) => id.split('#').pop()))
+
     this.subscriptions.has(topic) && this.getTopicSubscriptions(topic).forEach((socket) => {
-      const socketIndex = filterSockets.indexOf(socket.id)
-      const shouldSend = inverse ? socketIndex > -1 : socketIndex === -1
+      const isSocketFiltered = filterSocketsSet.has(socket.connection.id)
+      const shouldSend = inverse ? isSocketFiltered : !isSocketFiltered
 
       if (shouldSend) {
         socket.connection.write(payload)
