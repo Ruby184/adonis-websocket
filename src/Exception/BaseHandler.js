@@ -9,25 +9,16 @@ class BaseExceptionHandler {
     return ['Adonis/Src/Exception']
   }
 
-  /**
-   * Returns plain error to be used when running
-   * server in production. Since production
-   * server should not show error stack.
-   *
-   * @method _getPlainError
-   *
-   * @param  {Object}       error  - The error object
-   *
-   * @return {Object}
-   *
-   * @private
-   */
-  _convertToClientError (error, withStack = false, useErrorMessage = withStack) {
-    return Object.assign(new Error(useErrorMessage ? error.message : 'An error occurred while processing the request'), {
-      code: error.code || 'E_GENERIC',
-      status: error.status || 500,
-      stack: withStack ? error.stack : '',
-    })
+  _convertToClientError (error, withStack = false, useErrorMessageAndData = withStack) {
+    return Object.assign(
+      new Error(useErrorMessageAndData ? error.message : 'An error occurred while processing the request'),
+      useErrorMessageAndData ? { ...error } : {},
+      {
+        code: error.code || 'E_GENERIC',
+        status: error.status || 500,
+        stack: withStack ? error.stack : '',
+      }
+    )
   }
 
   /**

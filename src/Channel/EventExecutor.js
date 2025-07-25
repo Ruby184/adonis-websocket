@@ -157,7 +157,7 @@ class EventExecutor {
       value: this._getChannelControllerListeners(Controller.prototype),
       enumerable: false,
       writable: false,
-      configurable: false,
+      configurable: true,
     })
   }
 
