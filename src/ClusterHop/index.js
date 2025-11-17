@@ -9,81 +9,76 @@
  * file that was distributed with this source code.
 */
 
-const cluster = require('cluster')
 const debug = require('debug')('adonis:websocket')
 const msp = require('@uxtweak/adonis-websocket-packet')
-const { serialize, deserialize } = require('./serializer')
 const ChannelsManager = require('../Channel/Manager')
+const ClusterHopManager = require('./Manager')
+
+const PacketFlags = Object.freeze({
+  NONE: 0,
+  BINARY: 1 << 0,
+  LOCAL: 1 << 1,
+  INVERSE: 1 << 2,
+  ALL: ~(~0 << 3),
+})
 
 class ClusterHop {
-  constructor (encoder) {
+  constructor (encoder, options) {
     this._encoder = encoder
-
-    this.sender = function (handle, topic, payload, args = {}) {
-      try {
-        process.send && process.send(serialize({ handle, topic, payload, args }))
-      } catch (error) {
-        debug('cluster.send error %o', error)
-      }
-    }.bind(this)
-
-    this.receiver = function (message) {
-      let decoded = null
-    
-      try {
-        decoded = deserialize(message)
-      } catch (error) {
-        return debug('dropping packet, since it is not valid')
-      }
-
-      try {
-        this._deliverMessage(decoded)
-      } catch (error) {
-        debug('unable to process cluster message with error %o', error)
-      }
-    }.bind(this)
+    this._driver = ClusterHopManager.driver(options.driver, options.config || {})
   }
 
-  init () {
-    if (cluster.isWorker) {
-      debug('adding listener from worker to receive node message')
-      process.on('message', this.receiver)
-    }
+  initialize () {
+    debug('adding listener from worker to receive node message')
+    return this._driver.listen(this._deliverMessage.bind(this))
   }
 
   destroy () {
     debug('cleaning up cluster listeners')
-    process.removeListener('message', this.receiver)
+    return this._driver.destroy()
   }
 
-  _deliverMessage ({ handle, topic, payload, args = {} }) {
-    if (handle === 'broadcast') {
-      const channel = ChannelsManager.resolve(topic)
-  
-      if (!channel) {
-        return debug('broadcast topic %s cannot be handled by any channel', topic)
-      }
-  
-      return channel.broadcastPayload(topic, payload, args.ids, args.inverse)
+  _deliverMessage ({ topic, payload, ids = [], flags = PacketFlags.NONE }) {
+    const channel = ChannelsManager.resolve(topic)
+
+    if (!channel) {
+      return debug('broadcast topic %s cannot be handled by any channel', topic)
     }
-  
-    debug('dropping packet, since %s handle is not allowed', handle)
+
+    return channel.broadcastPayload(
+      topic,
+      flags & PacketFlags.BINARY ? Buffer.from(payload) : payload,
+      ids,
+      Boolean(flags & PacketFlags.INVERSE)
+    )
   }
 
-  _broadcastEvent (ipcBroadcast, channel, topic, event, data, ids = [], inverse = false) {
+  _broadcastEvent (channel, topic, event, data, ids = [], flags = PacketFlags.NONE) {
     const packet = msp.eventPacket(topic, event, data)
 
     /**
      * Encoding the packet before hand, so that we don't pay the penalty of
      * re-encoding the same message again and again
      */
-    this._encoder.encode(packet, (err, payload) => {
-      if (err) {
-        return
-      }
+    return new Promise((resolve, reject) => {
+      this._encoder.encode(packet, (err, payload) => {
+        if (err) {
+          return reject(err)
+        }
 
-      channel.broadcastPayload(topic, payload, ids, inverse)
-      ipcBroadcast && this.sender('broadcast', topic, payload, { ids, inverse })
+        channel.broadcastPayload(topic, payload, ids, Boolean(flags & PacketFlags.INVERSE))
+
+        if (flags & PacketFlags.LOCAL) {
+          resolve()
+        } else {
+          Promise.resolve(this._driver.send({
+            topic,
+            payload,
+            ids,
+            flags: Buffer.isBuffer(payload) ? flags | PacketFlags.BINARY : flags
+          })).then(resolve, reject)
+        }
+      })
     })
   }
 
@@ -91,20 +86,21 @@ class ClusterHop {
     if (ChannelsManager.resolve(topic) !== channel) {
       return null
     }
-    
+
     const $this = this
-    
+    const flags = ipcBroadcast ? PacketFlags.NONE : PacketFlags.LOCAL
+
     return {
       broadcast (event, data, exceptIds = []) {
-        $this._broadcastEvent(ipcBroadcast, channel, topic, event, data, exceptIds)
+        return $this._broadcastEvent(channel, topic, event, data, exceptIds, flags)
       },
 
       broadcastToAll (event, data) {
-        $this._broadcastEvent(ipcBroadcast, channel, topic, event, data)
+        return $this._broadcastEvent(channel, topic, event, data, [], flags)
       },
 
-      emitTo (event, data, ids) {
-        $this._broadcastEvent(ipcBroadcast, channel, topic, event, data, ids, true)
+      emitTo (event, data, onlyIds) {
+        return $this._broadcastEvent(channel, topic, event, data, onlyIds, flags | PacketFlags.INVERSE)
       }
     }
   }

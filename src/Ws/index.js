@@ -38,7 +38,12 @@ class Ws {
       serverAttempts: 3,
       clientInterval: 25000,
       clientAttempts: 3,
-      encoder: JsonEncoder
+      encoder: JsonEncoder,
+      cluster: {
+        driver: process.env.pm_id !== 'undefined' ? 'pm2' : 'cluster',
+        options: {}
+      },
+      allowedOrigins: []
     })
 
     /**
@@ -48,7 +53,7 @@ class Ws {
      */
     this._serverOptions = {
       path: this._options.path,
-      verifyClient: this._verifyClient.bind(this)
+      verifyClient: this._verifyClient.bind(this, this._options.allowedOrigins)
     }
 
     /**
@@ -110,7 +115,7 @@ class Ws {
      *
      * @type {ClusterHop}
      */
-    this._clusterHop = new ClusterHop(this._encoder)
+    this._clusterHop = new ClusterHop(this._encoder, this._options.cluster)
   }
 
   /**
@@ -127,6 +132,7 @@ class Ws {
    *
    * @method _verifyClient
    *
+   * @param  {Array}     allowedOrigins
    * @param  {Object}      info
    * @param  {Function}      ack
    *
@@ -134,7 +140,11 @@ class Ws {
    *
    * @private
    */
-  async _verifyClient (info, ack) {
+  async _verifyClient (allowedOrigins, info, ack) {
+    if (Array.isArray(allowedOrigins) && allowedOrigins.length > 0 && !allowedOrigins.includes(info.origin)) {
+      return ack(false, 400, `Request origin not allowed: "${info.origin}"`)
+    }
+
     if (typeof (this._handshakeFn) !== 'function') {
       return ack(true)
     }

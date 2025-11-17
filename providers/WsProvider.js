@@ -61,6 +61,18 @@ class WsProvider extends ServiceProvider {
     this.app.alias('Adonis/Addons/WsBaseExceptionHandler', 'WsBaseExceptionHandler')
   }
 
+  _registerClusterHop () {
+    this.app.singleton('Adonis/Addons/WsClusterHop', (app) => {
+      const ClusterHop = require('../src/ClusterHop')
+      return new LoggerFacade(app.use('Adonis/Src/Config'))
+    })
+    this.app.alias('Adonis/Addons/WsClusterHop', 'WsClusterHop')
+  }
+
+  _registerClusterHopManager () {
+    this.app.manager('Adonis/Addons/WsClusterHop', require('../src/ClusterHop/Manager'))
+  }  
+
   /**
    * Register all required providers
    *
@@ -72,6 +84,8 @@ class WsProvider extends ServiceProvider {
     this._registerWs()
     this._registerWsContext()
     this._registerExceptionHandler()
+    this._registerClusterHop()
+    this._registerClusterHopManager()
   }
 
   /**
