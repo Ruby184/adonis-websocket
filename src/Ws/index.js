@@ -377,7 +377,7 @@ class Ws {
     this._wsServer.on('connection', this.handle.bind(this))
 
     this._registerTimer()
-    this._clusterHop.init()
+    this._clusterHop.initialize()
   }
 
   /**
