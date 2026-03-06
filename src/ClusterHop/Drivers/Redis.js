@@ -10,7 +10,7 @@ class RedisDriver {
     this.senderId = randomUUID()
   }
 
-  static inject () {
+  static get inject () {
     return ['Adonis/Addons/Redis']
   }
 
